@@ -1,6 +1,6 @@
 import numpy as np
 from ase import Atoms
-
+from ase.units import Bohr
 
 def extended_xyz_parse(xyz_d):
     """Extracts information contained in the extended xyz format
