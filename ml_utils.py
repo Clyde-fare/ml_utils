@@ -1,6 +1,9 @@
 import numpy as np
 from ase import Atoms
 from ase.units import Bohr
+from pybel import readfile
+import mdtraj as md
+import simtk.unit as u
 
 def extended_xyz_parse(xyz_d):
     """Extracts information contained in the extended xyz format
@@ -177,4 +180,85 @@ def to_coulomb_vec(mol, addition=None):
     
     return cm_vec
 
-to_ase = lambda mol_p: Atoms(symbols = mol_p['symbols'], positions=mol_p['coords'])
+def to_ase(mol_p):
+    return Atoms(symbols = mol_p['symbols'], positions=mol_p['coords'])
+
+
+def solvate(ase_mol, mol_id, ase_solvent_mol, solvent_id, n_solvent=100):
+    """Build solvent sphere around molecule"""
+    
+    from openmoltools import packmol
+    # needs to be here rather than global because we sometimes pickle this function and send it to the server to run
+    # because on importing packmol sets various paths (e.g. where temporary files are kept)
+    # so we don't want to import those from the local session to the cluster
+    
+    ##File paths
+    mol_xyz_path =  mol_id + '.xyz'
+    mol_pdb_path = mol_id + '.pdb'
+
+    solvent_xyz_path = solvent_id + '.xyz'
+    solvent_pdb_path = solvent_id + '.pdb'
+
+    ##File construction of xyz and pdb files
+    ase_mol.write(mol_xyz_path)
+    pybel_mol = readfile("xyz", mol_xyz_path).next()
+    pybel_mol.write('pdb', mol_pdb_path, overwrite=True)
+
+    ##File construction of solvent pdb files
+    ase_solvent_mol.write(solvent_xyz_path)
+    pybel_mol = readfile("xyz", solvent_xyz_path).next()
+    pybel_mol.write('pdb', solvent_pdb_path, overwrite=True)
+    
+    solute_traj = md.load(mol_pdb_path)
+    solvent_traj = md.load(solvent_pdb_path)
+    
+    #currently only works for solvent composed of Hydrogens and Carbons!
+    #size returns length of box as measured in Angstrom
+    size = packmol.approximate_volume([mol_pdb_path, solvent_pdb_path], [1,n_solvent])
+    solvated_traj = packmol.pack_box([solute_traj,solvent_traj],[1,n_solvent],
+                                     fix=True, shape='sphere', size=size*0.75,
+                                     seed= np.random.randint(2**16), )
+
+    return to_ase_frames(solvated_traj)[0]
+
+def to_ase_frames(traj):
+    """Converts an mdtraj trajectory object corresponding to snapshots from an openMM simulation
+    to a list of ASE objects each corresponding to one frame"""
+    
+    unit_conversion = u.nanometer.conversion_factor_to(u.angstrom)
+    
+    symbols = ([a.element.symbol for a in traj.topology.atoms])
+    sim_positions = [frame_coords*unit_conversion for frame_coords in traj.xyz]
+    
+    frames = []
+    for frame_positions in sim_positions:
+        frames.append(Atoms(symbols=symbols,positions=frame_positions))
+            
+    return frames
+
+    
+def generate_solvated_ensemble(orig_mol, mol_id, solvent_mol, solvent_id, n_solvent, ensemble_size):
+    """Generated ensemble of solvated molecules"""
+    
+    #joblib fails, multiprocessing + pool.map fails
+    # maybe need to try using partial + pool.map?
+    # e.g. http://stackoverflow.com/questions/16542261/python-multiprocessing-pool-with-map-async
+
+    #from joblib import Parallel, delayed
+    #if we are in a pbs job parallelise loop
+    #ncpus = os.environ.get('NCPUS', 1)
+    #ensemble = Parallel(n_jobs=ncpus)( \
+    #                delayed(solvate)(orig_mol, mol_id, solvent_mol, solvent_id, n_solvent) for i in range(ensemble_size) \
+    #                                 )
+    
+    #p_solvate = lambda e: solvate(orig_mol, mol_id, solvent_mol, solvent_id, n_solvent)
+    #ncpus = os.environ.get('NCPUS', 1)
+    #pool = Pool(processes=ncpus)
+    #ensemble = pool.map(p_solvate, range(ensemble_size))    
+    #ensemble_dfs = [delayed(solvate)(orig_mol, mol_id, solvent_mol, solvent_id, n_solvent) for i in range(ensemble_size)]
+    #ensemble = Parallel(n_jobs=ncpus)(ensemble_dfs)
+    #ensemble = [df[0](*df[1]) for df in ensemble_dfs]           
+    
+    ensemble = [solvate(orig_mol, mol_id, solvent_mol, solvent_id, n_solvent) for i in range(ensemble_size)]
+    
+    return ensemble
