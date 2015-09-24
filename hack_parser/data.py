@@ -70,6 +70,7 @@ class ccData(object):
         temperature -- Tempature used for Thermochemistry (float kelvin)
         entropy -- Entropy (float hartree/particle)
         optdone -- Stores if an optimisation job has completed (boolean)
+        oniomenergies -- Stores oniom energies 
     (1) The term 'array' refers to a numpy array
     (2) The number of dimensions of an array is given in square brackets
     (3) Python indexes arrays/lists starting at zero, so if homos==[10], then
@@ -122,6 +123,7 @@ class ccData(object):
                             "nbasis":         int,
                             "nmo":            int,
                             "nocoeffs":       numpy.ndarray,
+                            "oniomenergies":  list,                            
                             "scfenergies":    numpy.ndarray,
                             "scftargets":     numpy.ndarray,
                             "scfvalues":      list,
@@ -158,7 +160,7 @@ class ccData(object):
                           'vibanharms', 'vibdisps', 'vibfreqs', 'vibirs',
                           'vibramans', 'vibsyms', 'scannames', 'scanenergies', 'scanparm',
                           'scancoords', 'enthaply', 'freeenergy', 'temperature', 'entropy', 
-                          'optdone']
+                          'optdone', 'oniomenergies']
 
         # Arrays are double precision by default, but these will be integer arrays.
         self._intarrays = ['atomnos', 'coreelectrons', 'homos']
