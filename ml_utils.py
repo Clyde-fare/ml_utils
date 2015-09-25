@@ -4,6 +4,8 @@ from ase.units import Bohr
 from pybel import readfile
 import mdtraj as md
 import simtk.unit as u
+import hack_parser
+from hack_parser.utils import convertor
 
 def extended_xyz_parse(xyz_d):
     """Extracts information contained in the extended xyz format
@@ -262,3 +264,14 @@ def generate_solvated_ensemble(orig_mol, mol_id, solvent_mol, solvent_id, n_solv
     ensemble = [solvate(orig_mol, mol_id, solvent_mol, solvent_id, n_solvent) for i in range(ensemble_size)]
     
     return ensemble
+
+#energy extraction for oniom calcs
+def get_o_energies(mol):
+    """Parse using hacked old cclib version that parses oniom optimisation jobs"""
+    
+    ev_to_hartree = 1./convertor(1,'hartree','eV')
+    g=hack_parser.Gaussian(mol.calc.log, loglevel=0)
+    d=g.parse()
+    #lm, hm, lr
+    o_component_es = np.array(d.oniomenergies)
+    return (ev_to_hartree * o_component_es * [-1,1,1]).sum(axis=1)
