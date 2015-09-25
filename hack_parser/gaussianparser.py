@@ -190,7 +190,12 @@ class Gaussian(logfileparser.Logfile):
             while line != hyphens:
                 broken = line.split()
                 self.inputatoms.append(int(broken[1]))
-                atomcoords.append(list(map(float, broken[3:6])))
+                #gaussian can have bugged output where the coordinates run into each other
+                try:
+                    atomcoords.append(list(map(float, broken[3:6])))
+                except ValueError:
+                    atomcoords=[]
+                    break
                 line = next(inputfile)
 
             self.inputcoords.append(atomcoords)
