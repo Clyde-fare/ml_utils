@@ -5,6 +5,7 @@ from pybel import readfile
 import mdtraj as md
 import simtk.unit as u
 import hack_parser
+import os
 from hack_parser.utils import convertor
 
 def extended_xyz_parse(xyz_d):
@@ -207,9 +208,13 @@ def solvate(ase_mol, mol_id, ase_solvent_mol, solvent_id, n_solvent=100):
     pybel_mol.write('pdb', mol_pdb_path, overwrite=True)
 
     ##File construction of solvent pdb files
-    ase_solvent_mol.write(solvent_xyz_path)
-    pybel_mol = readfile("xyz", solvent_xyz_path).next()
-    pybel_mol.write('pdb', solvent_pdb_path, overwrite=True)
+
+    if not os.path.isfile(solvent_xyz_path):
+        ase_solvent_mol.write(solvent_xyz_path)
+    
+    if not os.path.isfile(solvent_pdb_path):
+        pybel_mol = readfile("xyz", solvent_xyz_path).next()
+        pybel_mol.write('pdb', solvent_pdb_path)
     
     solute_traj = md.load(mol_pdb_path)
     solvent_traj = md.load(solvent_pdb_path)
