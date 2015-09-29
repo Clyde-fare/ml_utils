@@ -5,8 +5,15 @@ from pybel import readfile
 import mdtraj as md
 import simtk.unit as u
 import hack_parser
-import os
 from hack_parser.utils import convertor
+from gausspy import Gaussian
+from ase.io import read
+import tarfile
+import os
+import dill
+
+import warnings
+
 
 def extended_xyz_parse(xyz_d):
     """Extracts information contained in the extended xyz format
@@ -68,11 +75,13 @@ def extended_xyz_parse(xyz_d):
     
     return mol_properties
 
+
 def ase_mol_parse(m):
     """Extracts information contained in an ASE molecule following a Gaussian calculation to a data dictionary
     matching the format used above """
     
     coords = np.array(m.calc.max_data['Positions'])
+    symbols = m.get_chemical_symbols()
     no_atoms = len(m)
 
     ##these try except blocks are because the machine readable part of log files 
@@ -81,7 +90,7 @@ def ase_mol_parse(m):
     try:
         charges = np.array(m.calc.max_data['atomcharges']['mulliken'])
     except KeyError:
-        charges = [0 for i in range(no_atoms)]
+        charges = [None for i in range(no_atoms)]
     try:
         zpe = m.calc.max_data['Zeropoint']
     except KeyError:
@@ -93,28 +102,70 @@ def ase_mol_parse(m):
     try:
         rot_A, rot_B, rot_C = m.calc.max_data['rotconstants']
     except KeyError:
-        rot_A, rot_B, rot_C = 0,0,0
+        rot_A, rot_B, rot_C = None,None,None
     
-    h_298k = m.calc.max_data['enthalpy']
-    f_298k = m.calc.max_data['freeenergy']
-    u_0k = m.calc.max_data['Hf'] + zpe
-    u_298k = m.calc.max_data['Hf'] + m.calc.max_data['Thermal']
+    try:
+        h_298k = m.calc.max_data['enthalpy']
+    except KeyError:
+        h_298k = None
+
+    try:
+        f_298k = m.calc.max_data['freeenergy']
+    except KeyError:
+        f_298k = None
+
+    try:
+        u_0k = m.calc.max_data['Hf'] + zpe
+    except KeyError:
+        u_0k = None
     
-    dipole = np.linalg.norm(m.calc.max_data['Dipole'])
-    polarisability = m.calc.max_data['Polar'][0]
-    homo_ind = m.calc.max_data['homos'][0]
-    homo = m.calc.max_data['moenergies'][0][homo_ind]
-    lumo = m.calc.max_data['moenergies'][0][homo_ind+1]
-    band_gap = lumo-homo
-  
-    symbols = m.get_chemical_symbols()
+    try:
+        u_298k = m.calc.max_data['Hf'] + m.calc.max_data['Thermal']
+    except KeyError:
+        u_298k = None
+
+    try:
+        dipole = np.linalg.norm(m.calc.max_data['Dipole'])
+    except KeyError:
+        dipole = None
+
+    try:
+        polarisability = m.calc.max_data['Polar'][0]
+    except KeyError:
+        polarisability = None
+
+    try:   
+        homo_ind = m.calc.max_data['homos'][0]
+    except KeyError:
+        homo_ind = None
+
+    try:
+        homo = m.calc.max_data['moenergies'][0][homo_ind]
+    except KeyError:
+        homo = None
+
+    try:
+        lumo = m.calc.max_data['moenergies'][0][homo_ind+1]
+    except KeyError:
+        lumo = None
+
+    try:
+        band_gap = lumo-homo
+    except TypeError:
+        band_gap = None
 
     # the biotools environment on this machine and the ml environment on cx1
     # contain a hacked cclib that extract heatcapacity/rotconstants and ese from log files
-    cp_298k = m.calc.max_data['heatcapacity']
-    
-    ese = m.calc.max_data['ese']
-    
+    try:
+        cp_298k = m.calc.max_data['heatcapacity']
+    except KeyError:
+        cp_298k = None
+
+    try:
+        ese = m.calc.max_data['ese']
+    except KeyError:
+        ese = None
+
     data_dict = {'mol_id': m.calc.label,
                  'coords': coords,
                  'charges': charges,
@@ -145,6 +196,7 @@ def ase_mol_parse(m):
     
     return data_dict
 
+
 def to_coulomb_m(mol, max_size=23):
     """Generates a coulomb matrix representing the ASE atoms object"""
     mol = to_ase(mol)
@@ -170,18 +222,20 @@ def to_coulomb_m(mol, max_size=23):
     
     return np.pad(coulomb_m, pad_width= ((0,padding),(0,padding)), mode='constant', constant_values=0)
 
-def to_coulomb_vec(mol, addition=None):
+
+def to_coulomb_vec(mol, max_size=23, addition=None):
     """Generates a coulomb matrix representing the molecule passed in mol
     
     if an additional array is passed this is added on to the end of the vector """
 
-    cm = to_coulomb_m(mol)
+    cm = to_coulomb_m(mol, max_size=max_size)
     cm_vec = cm[np.tril_indices(cm.shape[0])]
     
     if addition:
         cm_vec = np.hstack([cm_vec, addition])
     
     return cm_vec
+
 
 def to_ase(mol_p):
     return Atoms(symbols = mol_p['symbols'], positions=mol_p['coords'])
@@ -228,6 +282,7 @@ def solvate(ase_mol, mol_id, ase_solvent_mol, solvent_id, n_solvent=100):
 
     return to_ase_frames(solvated_traj)[0]
 
+
 def to_ase_frames(traj):
     """Converts an mdtraj trajectory object corresponding to snapshots from an openMM simulation
     to a list of ASE objects each corresponding to one frame"""
@@ -270,6 +325,7 @@ def generate_solvated_ensemble(orig_mol, mol_id, solvent_mol, solvent_id, n_solv
     
     return ensemble
 
+
 #energy extraction for oniom calcs, returns 0 if calculation has no oniom energy
 def get_o_energies(mol):
     """Parse using hacked old cclib version that parses oniom optimisation jobs"""
@@ -284,3 +340,70 @@ def get_o_energies(mol):
         return 0
 
     return (ev_to_hartree * o_component_es * [-1,1,1]).sum(axis=1)
+
+
+def extract_bz2(tar_bz_f, calc_type):
+    """
+    Searches through a .tar.bz2 file extracting data from all .log files that
+    match string argument 'calc_type'. 
+    Then pickles the total list of extracted data
+    """
+    
+    # we give the gaussian calculator a label that includes the directory the
+    # log file is contained in, this does not affect the parsing process but
+    # generate a warning as it is not an expected form for the label. To avoid
+    # the profusion of warning messages in stdout we suppress warnings here.
+    warnings.filterwarnings("ignore")
+
+    extended_xyzs = []
+
+    with tarfile.open(tar_bz_f,'r:bz2') as data_tar:
+        calc_logs = (log_tar for log_tar in data_tar 
+                     if calc_type in log_tar.name and '.log' in log_tar.name)
+        
+        for calc_log in calc_logs:
+            try:
+                # extract log file (and relevant directory)
+                data_tar.extract(calc_log)
+
+                # convert to ASE/Gaussian format
+                mol = read(calc_log.name)
+                mol.set_calculator(
+                    Gaussian(
+                        label=calc_log.name.replace('.log','')
+                    )
+                )
+
+                # parse into ML readable format
+                parsed_mol = ase_mol_parse(mol)
+                extended_xyzs.append(parsed_mol)
+            except AttributeError:
+                # if the calculation didn't complete we get an empty dictionary 
+                # so we we keep track of these failed calculations with a blank 
+                # entry other than mol_id
+                blank_entry = {'mol_id':calc_log.name.replace('.log','')}
+                extended_xyzs.append(blank_entry)
+            finally:
+                # delete extracted log file
+                os.remove(calc_log.name)
+
+            # solves memory problem
+            # http://blogs.it.ox.ac.uk/inapickle/2011/06/20/high-memory-usage-when-using-pythons-tarfile-module/ # noqa
+            data_tar.members=[]
+            
+    dir_name = tar_bz_f.replace('.tar.bz2','')
+
+    # delete extracted directory
+    os.rmdir(dir_name)
+
+    # search key function
+    # assumes files are named xxx_frame_{frame}_mol_{no}
+    def mol_no_frame(mol):
+        mol_no = int(mol['mol_id'].split('_')[-1].replace('.log',''))
+        mol_frame = int(mol['mol_id'].split('_')[-3])
+        return mol_no,mol_frame
+
+    extended_xyzs = sorted(extended_xyzs,key=mol_no_frame)
+
+    with open(dir_name + '_' + calc_type + '_data.pkl', 'w') as data_f:
+        dill.dump(extended_xyzs, data_f)
