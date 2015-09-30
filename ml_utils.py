@@ -336,12 +336,11 @@ def generate_solvated_ensemble(orig_mol, mol_id, solvent_mol, solvent_id, n_solv
 #energy extraction for oniom calcs, returns 0 if calculation has no oniom energy
 def get_o_energies(mol):
     """Parse using hacked old cclib version that parses oniom optimisation jobs"""
-    
-    ev_to_hartree = 1./convertor(1,'hartree','eV')
-    g=hack_parser.Gaussian(mol.calc.log, loglevel=50)
-    d=g.parse()
-    #lm, hm, lr
     try:
+        ev_to_hartree = 1./convertor(1,'hartree','eV')
+        g=hack_parser.Gaussian(mol.calc.log, loglevel=50)
+        d=g.parse()
+        #lm, hm, lr
         o_component_es = np.array(d.oniomenergies)
     except AttributeError:
         return 0
