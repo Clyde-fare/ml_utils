@@ -1,13 +1,13 @@
 import numpy as np
 from ase import Atoms
 from ase.units import Bohr
+from ase.io import read
 from pybel import readfile
 import mdtraj as md
 import simtk.unit as u
 import hack_parser
 from hack_parser.utils import convertor
 from gausspy import Gaussian
-from ase.io import read
 import tarfile
 import os
 import dill
@@ -80,7 +80,14 @@ def ase_mol_parse(m):
     """Extracts information contained in an ASE molecule following a Gaussian calculation to a data dictionary
     matching the format used above """
     
-    coords = np.array(m.calc.max_data['Positions'])
+    try:
+        coords = read(m.calc.log).positions
+    except AttributeError:
+        try:
+            coords = np.array(m.calc.max_data['Positions'])
+        except ValueError:
+            pass
+
     symbols = m.get_chemical_symbols()
     no_atoms = len(m)
 
