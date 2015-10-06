@@ -413,3 +413,13 @@ def extract_bz2(tar_bz_f, calc_type):
 
     with open(dir_name + '_' + calc_type + '_data.pkl', 'w') as data_f:
         dill.dump(extended_xyzs, data_f)
+
+def fd_no_bins(y):
+    """
+    Determines the number of bins a histogram of y should use
+    Via the Freedman-Diaconis rule
+    """
+    q75, q25 = np.percentile(y, [75 ,25])
+    iqr = q75 - q25
+    h=2*iqr*len(y_total)**(-1./3) 
+    return int((max(y)-min(y))/h)
