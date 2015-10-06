@@ -421,5 +421,5 @@ def fd_no_bins(y):
     """
     q75, q25 = np.percentile(y, [75 ,25])
     iqr = q75 - q25
-    h=2*iqr*len(y_total)**(-1./3) 
+    h=2*iqr*len(y)**(-1./3) 
     return int((max(y)-min(y))/h)
