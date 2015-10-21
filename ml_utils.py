@@ -328,7 +328,7 @@ def generate_solvated_ensemble(orig_mol, mol_id, solvent_mol, solvent_id, n_solv
     #ensemble = Parallel(n_jobs=ncpus)(ensemble_dfs)
     #ensemble = [df[0](*df[1]) for df in ensemble_dfs]           
     
-    ensemble = [solvate(orig_mol, mol_id, solvent_mol, solvent_id, n_solvent) for i in range(ensemble_size)]
+    ensemble = (solvate(orig_mol, mol_id, solvent_mol, solvent_id, n_solvent) for i in range(ensemble_size))
     
     return ensemble
 
@@ -423,3 +423,22 @@ def fd_no_bins(y):
     iqr = q75 - q25
     h=2*iqr*len(y)**(-1./3) 
     return int((max(y)-min(y))/h)
+
+#Hacky
+def clean_labels(labels):
+    """
+    Cleans up an assigned set of bins such that no bin has less than 2
+    members
+    """
+
+    llabels, slabels = list(labels), set(labels)
+    
+    for l in slabels:
+        if llabels.count(l) <2 and l != max(slabels):
+            llabels[llabels.index(l)] = l+1
+            return clean_labels(llabels)
+        elif llabels.count(l) <2 and l == max(slabels):
+            llabels[llabels.index(l)] = l-1
+            return clean_labels(llabels)
+    else:
+        return np.array(llabels)
