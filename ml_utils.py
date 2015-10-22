@@ -283,10 +283,16 @@ def solvate(ase_mol, mol_id, ase_solvent_mol, solvent_id, n_solvent=100):
     #currently only works for solvent composed of Hydrogens and Carbons!
     #size returns length of box as measured in Angstrom
     size = packmol.approximate_volume([mol_pdb_path, solvent_pdb_path], [1,n_solvent])
-    solvated_traj = packmol.pack_box([solute_traj,solvent_traj],[1,n_solvent],
-                                     fix=True, shape='sphere', size=size*0.75,
-                                     seed= np.random.randint(2**16), )
 
+    if ase_mol != ase_solvent_mol:
+        solvated_traj = packmol.pack_box([solute_traj,solvent_traj],[1,n_solvent],
+                                         fix=True, shape='sphere', size=size*0.75,
+                                         seed= np.random.randint(2**16), )
+    else:
+        solvated_traj = packmol.pack_box([solvent_traj],[n_solvent+1],
+                                         fix=True, shape='sphere', size=size*0.75,
+                                         seed= np.random.randint(2**16), )
+        
     return to_ase_frames(solvated_traj)[0]
 
 
